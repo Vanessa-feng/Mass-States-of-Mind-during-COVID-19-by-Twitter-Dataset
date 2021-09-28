@@ -1,4 +1,6 @@
 # Mass-States-of-Mind-during-COVID-19-by-Twitter-Dataset
+@ Xin Feng  
+@ Jiamei Zhang 
 
 In this project, we are mainly interested in analysing the social media posts (Tweets) re- lated to the COVID19 topics from Jan 2020 to April 2021. Leveraging the public datsets [2], we are aimed at completing three major tasks in this context. First, data mining and extracting summary statistics from big data. Second, we would visualize the key trajectories representing public status using ggplot and R-shiny App. Lastly, the modeling part concentrated on unsupervised learning. We will use time series based clustering methods to group topics with similar trends of popularity.
 
