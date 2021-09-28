@@ -1,0 +1,402 @@
+---
+title: "STAT209-Project"
+output: pdf_document
+author: Xin Feng; Jiamei Zhang
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 0 Before plot: Introduce project (Use Proposal)
+## 0.1 Motivation, Objective
+## 0.2 Data Source, how many data collected
+## 0.3 General Steps of processing data: what we have done for now, what we need to do in future
+
+# 1 Summary Info: Basic statistics
+## (y) 1.1 Number of Tweets per day (one plot, overlay with number of Eng, number of Geocode)
+
+# 2 Geocode: How different country & different language user care for COVID-19
+## 2.1 Number of Tweets of each country (overlay with map info)
+## (y) 2.2 What language are used in top 5-10 reported countries
+
+# 3 Hashtag: Plot and find how main topics change as the pedanmic developed
+## (y) 3.1 Top hashtags in each month (barplot vertical)
+## 3.2 Overall top hashtags word cloud
+
+# 4 Sentiment: Plot and find if there is some important issues happening with sentiment
+## (y) 4.1 Plot number of positive/negative/neutral tweets
+
+
+```{r}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+#library(plyr)
+library(readr)
+library(lubridate)
+library(ggwordcloud)
+library(gridExtra)
+```
+
+```{r}
+# ---------------------------------------------------------------------------------------
+# Prepare summary data
+# @ Xin and Jiamei
+# ---------------------------------------------------------------------------------------
+setwd('./STAT 209/final-project/data')
+
+sent_all_2020 <- 
+  list.files(path = './STAT 209/final-project/data',
+                            pattern = "^combined_sent(.*)csv$", full.names = TRUE) %>% 
+  lapply(read_csv,
+           col_types = cols(
+           Year = col_integer(),
+           Month = col_integer(),
+           Day = col_integer(),
+           Hour= col_integer()
+           )) %>%                      # Store all files in list
+  bind_rows                                 # Combine data sets into one data set 
+
+
+geo_all_2020 <-
+  list.files(path = './STAT 209/final-project/data',
+                            pattern = "^combined_geo(.*)csv$", full.names = TRUE) %>%
+  lapply(read_csv,
+         col_types = cols(
+           Tweet_ID = col_double(),
+           Country = col_factor(),
+           Language = col_factor()
+           )
+         ) %>%
+  bind_rows
+
+summ_all_2020 <- 
+  list.files(path = './STAT 209/final-project/data',
+                            pattern = "^combined_summ(.*)csv$", full.names = TRUE) %>% 
+  lapply(read_csv,
+         col_types = cols(
+           Year = col_integer(),
+           Month = col_integer(),
+           Day = col_integer(),
+           Hour= col_integer()
+           )
+         ) %>%                      
+  bind_rows
+
+hash_all_2020 <-
+  list.files(path = './STAT 209/final-project/data',
+                            pattern = "^combined_hash(.*)csv$", full.names = TRUE) %>%
+  lapply(read_csv,
+         col_types = cols(
+           Year = col_integer(),
+           Month = col_integer(),
+           Day = col_integer(),
+           Hashtag = col_factor()
+           )
+         ) %>%
+  bind_rows %>%
+  select(-Hastag)
+```
+
+```{r}
+# ---------------------------------------------------------------------------------------
+# 1. Summary Info: Basic statistics
+# @ Xin
+# ---------------------------------------------------------------------------------------
+## 1.1 Number of Tweets per day (one plot, overlay with number of Eng, number of Geocode)
+summ_byday <-
+  summ_all_2020 %>%
+  group_by(Year, Month, Day) %>%
+  summarise(Total_tweets = sum(Count, na.rm = TRUE),
+            Eng_tweets = sum(Eng_count, na.rm = TRUE),
+            Geo_tweets = sum(Geo_count, na.rm = TRUE)) %>%
+  mutate(date = make_date(Year,Month,Day))
+```
+
+```{r}
+pdf(file = "./STAT 209/final-project/figures/figure-1-summ.pdf",
+    width = 6, 
+    height = 4) 
+#par(cex.lab=0.6, cex.axis=0.6, cex.main=0.6)
+
+ggplot(summ_byday)+
+  geom_line(mapping = aes(x = date, y = Total_tweets,color='Total # of Tweets'))+
+  geom_line(mapping = aes(x = date, y = Eng_tweets,color='# in English'))+
+  geom_line(mapping = aes(x = date, y = Geo_tweets,color='# with Country code'))+
+  # scale_x_date(date_labels = "%b-%d",date_breaks = "months")+
+  ylab('Tweet Day Count')+
+  theme(axis.text.x = element_text(angle=45, hjust = 1),
+        legend.position="bottom")
+dev.off()
+```
+```{r}
+# 
+by_lang <-
+  geo_all_2020 %>%
+  count(Country,Language,sort = TRUE)%>%
+  group_by(Country) %>%
+  slice_max(order_by = n, n = 5) %>%
+  filter(Country %in% c('US','GB','BR','IN','CA','ID','ES','MX','AR'))
+
+pdf(file = "./STAT 209/final-project/figures/figure-2.2-toplang_ctry.pdf",
+    width = 6, 
+    height = 4) 
+ggplot(by_lang)+
+    geom_bar(mapping = aes(x = reorder(Country,n,FUN=max),
+                           y = n,
+                           fill=Language),stat = 'identity')+
+    theme(axis.text.x = element_text(angle=45, hjust = 1),
+          text = element_text(size=15),
+          legend.position = "right") +
+  xlab('Country')+ylab('Count')  
+dev.off()
+
+by_country <-
+  geo_all_2020 %>%
+  group_by(Country) %>%
+  summarise(count = n()) %>%
+  mutate(Density = count/sum(count)) %>%
+  slice_max(order_by = Density, n = 10)
+
+pdf(file = "./STAT 209/final-project/figures/figure-2.3-topctry.pdf",
+    width = 6, 
+    height = 4) 
+
+ggplot(by_country)+
+    geom_bar(mapping = aes(x = reorder(Country,Density,FUN=function(x) x),
+                           y=Density,
+                           fill=Country),stat = 'identity')+
+    theme(axis.text.x = element_text(angle=45, hjust = 1),
+          text = element_text(size=15),
+          legend.position = "right") +
+  xlab('Country')
+dev.off()
+```
+
+```{r}
+library(maps)
+library(scales)
+library(rgdal)
+```
+
+```{r}
+# ---------------------------------------------------------------------------------------
+# 2. Geo_info_map: plot world map
+# @ Xin
+# ---------------------------------------------------------------------------------------
+
+geo_info <- read.csv("./combined_res_from_2021-04-01_to_2021-04-30.csv")
+country_info <- read.csv("./countries_codes_and_coordinates.csv")
+
+geo_info <- geo_info %>% group_by(Country) %>% summarize(total = n(), 
+                                                        po_cnt = sum(Sentiment_Label=='positive'), 
+                                                        ne_cnt = sum(Sentiment_Label=='negative'), 
+                                                        ratio = (po_cnt-ne_cnt)/total)
+# head(geo_sum)
+country <- country_info %>% transmute(code=gsub(" ","",Alpha.2.code), area=gsub(" ", "", Country), 
+                                      long=Longitude..average., lat=Latitude..average.)
+geo_sum <- geo_info %>% inner_join(country, by=c("Country"="code"))
+```
+
+```{r}
+world = map_data("world")
+
+map_plot <- ggplot() + 
+  geom_map(aes(map_id=region), map=world, data=world, fill="snow1", color="grey80") + 
+  expand_limits(x = world$long, y = world$lat)
+
+# pdf(file = "./map_21_04.pdf",
+#     width = 6,
+#     height = 4)
+
+map_plot + geom_point(mapping=aes(x=long, y=lat, color=ratio), 
+                      size = log(sqrt(geo_sum$total)), alpha=0.8, data=geo_sum) + 
+  scale_colour_gradient2(low=muted("deepskyblue4"), mid="palegoldenrod", 
+                         high=muted("tomato4"), midpoint=0) + 
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())
+
+# dev.off()
+```
+
+```{r}
+### Shiny use world map data: OGR file
+my_spdf <- readOGR( 
+  dsn = paste0(getwd(), "/Shiny-Project/world_shape_file/"),
+  layer="TM_WORLD_BORDERS_SIMPL-0.3",
+  verbose=FALSE
+)
+
+my_spdf@data$POP2005[ which(my_spdf@data$POP2005 == 0)] = NA
+my_spdf@data$POP2005 <- as.numeric(as.character(my_spdf@data$POP2005)) / 1000000 %>% round(2)
+my_spdf@data
+```
+
+```{r}
+#### Hashtag data plot words cloud
+hashtag <- read.csv("./Shiny-Project/data/hash_bymonth_excv_top10.csv", encoding="UTF-8")
+
+ggplot(hashtag %>% filter(Year==2020, Month==12),
+       aes(label = stri_trans_general(Hashtag, "Latin-ASCII"), 
+           size = hash_count, col = as.character(hash_count))) +
+  geom_text_wordcloud(area_corr_power = 0.05, rm_outside = TRUE) +
+  scale_size_area(max_size = 7)+
+  theme_minimal()
+```
+
+
+```{r}
+# print all tabular data(if exists any)
+for(i in 1:length(json_data$resources$datahub$type)){
+  if(json_data$resources$datahub$type[i]=='derived/csv'){
+    path_to_file = json_data$resources$path[i]
+    data <- read.csv(url(path_to_file))
+    print(data)
+  }
+}
+```
+
+
+```{r}
+geo_world <- geo_sum %>% select(area, ratio) %>% inner_join(world, by=c("area"="region"))
+
+ggplot(data=geo_world, aes(x=long, y=lat, group=group)) + 
+  geom_polygon(aes(fill=ratio)) + 
+  scale_colour_gradient2(low=muted("deepskyblue4"), mid="palegoldenrod", high=muted("tomato4"), midpoint=0) + 
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())
+```
+
+
+```{r}
+# ---------------------------------------------------------------------------------------
+# 3 Hashtag: Plot and find how main topics change as the pedanmic developed
+# @ Jiamei
+# ---------------------------------------------------------------------------------------
+## 3.1 Top hashtags in each month (barplot vertical)
+hash_bymonth <-
+  hash_all_2020 %>%
+  group_by(Hashtag,Year, Month) %>%
+  summarise(hash_count = sum(Tweet_ID, na.rm = TRUE)) %>%
+  mutate(date = make_date(Year,Month))
+
+# arrange ascending by month and descending by hash_count
+hash_bymonth <- hash_bymonth[order(hash_bymonth$Month,-hash_bymonth$hash_count),]
+
+```
+
+```{r}
+# get top-5or10 for better plot
+temp <-
+  hash_bymonth %>% group_by(Month) %>% top_n(10, hash_count) %>%
+  arrange(Month) %>%
+  group_by(Month) %>%
+  group_split()
+
+
+plots = vector('list', 12)
+for (i in 1:12) {
+  data <- temp[[i]]
+  plots[[i]] <- ggplot(data = data ) +
+    geom_bar(mapping = aes(x = Hashtag,y=hash_count,fill=Hashtag),stat = 'identity')+
+    theme(axis.text.x = element_text(angle=45, hjust = 1),
+          text = element_text(size=4),
+          legend.position = "none")+
+    ggtitle(paste0('Month',i))
+}
+
+n <- length(plots)
+
+pdf(file = "./STAT 209/final-project/figures/figure-3.1-hash.pdf",
+    width = 7, 
+    height = 4) 
+do.call("grid.arrange", c(plots, ncol=4))
+dev.off()
+```
+
+```{r}
+## 3.2 Overall top hashtags word cloud
+hash_all <- 
+  hash_bymonth %>%
+  mutate(season = ifelse(Month<=3,"Season1",
+                ifelse(Month<=6,"Season2",
+                       ifelse(Month<=9,"Season3","Season4")))) 
+
+hash_year <- hash_all%>%
+  group_by(Hashtag) %>%
+  summarise(count = sum(hash_count)) %>%
+  slice_max(order_by = count, n = 100)
+
+
+hash_quar <- hash_all%>%
+  group_by(season,Hashtag) %>%
+  summarise(count = sum(hash_count)) %>%
+  slice_max(order_by = count, n = 20) %>%
+  slice_min(order_by = count, n = 15)
+
+pdf(file = "./STAT 209/final-project/figures/figure-3.2-hashcloud_year.pdf",
+    width = 8, 
+    height = 6) 
+ggplot(hash_year, aes(label = Hashtag, size = count, col = as.character(count))) +
+  geom_text_wordcloud(area_corr_power = 0.1) +
+  scale_size_area(max_size = 25)+
+  theme_minimal()
+dev.off()
+
+plots <- hash_quar %>%
+  do(plots=ggplot(data=.) +
+       aes(label = Hashtag, size = count, col = as.character(count)) +
+       geom_text_wordcloud(area_corr_power = 0.05,rm_outside = TRUE) +
+       ggtitle(unique(.$season))+
+       scale_size_area(max_size = 10)+
+       theme_minimal())
+
+# grid.arrange(plots$plots[[1]], plots$plots[[2]],
+#              plots$plots[[3]], plots$plots[[4]],
+#              ncol=2)
+
+
+pdf(file = "./STAT 209/final-project/figures/figure-3.2-hashcloud_season.pdf",
+    width = 8, 
+    height = 6) 
+do.call("grid.arrange", c(plots$plots, ncol=2))
+dev.off()
+
+```
+
+
+```{r}
+# ---------------------------------------------------------------------------------------
+# 4 Sentiment: Plot and find if there is some important issues happening with sentiment
+# @ Jiamei
+# ---------------------------------------------------------------------------------------
+## 4.1 Plot number of positive/negative/neutral tweets
+
+sent_byday <-
+  sent_all_2020 %>%
+  group_by(Year, Month, Day) %>%
+  summarise(neg_day_sum = sum(Neg_Count, na.rm = TRUE),
+            pos_day_sum = sum(Pos_count, na.rm = TRUE),
+            neu_day_sum = sum(Neu_count, na.rm = TRUE)) %>%
+  mutate(date = make_date(Year,Month,Day),
+         total =neg_day_sum+pos_day_sum+neu_day_sum)
+```
+
+```{r}
+pdf(file = "./STAT 209/final-project/figures/figure-4-sent.pdf",
+    width = 6, 
+    height = 4) 
+#par(cex.lab=0.6, cex.axis=0.6, cex.main=0.6)
+
+ggplot(sent_byday)+
+  geom_line(mapping = aes(x = date, y = neg_day_sum,color='Negtive'))+
+  geom_line(mapping = aes(x = date, y = pos_day_sum,color='Positive'))+
+  geom_line(mapping = aes(x = date, y = neu_day_sum,color='Neutral'))+
+  scale_x_date(date_labels = "%b-%d",date_breaks = "months")+
+  ylab('Tweet Day Count')+
+  theme(axis.text.x = element_text(angle=45, hjust = 1),
+        legend.position="bottom")
+dev.off()
+```
+ 
+
+
